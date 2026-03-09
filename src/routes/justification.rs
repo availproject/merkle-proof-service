@@ -1,7 +1,7 @@
+use axum::Json;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::Json;
 use serde::{Deserialize, Serialize};
 
 use super::AppState;
@@ -40,10 +40,9 @@ pub async fn get_justification(
                 StatusCode::BAD_REQUEST,
                 Json(JustificationResponse::Error {
                     success: false,
-                    error: "Missing required parameters: blockNumber and availChainId"
-                        .to_string(),
+                    error: "Missing required parameters: blockNumber and availChainId".to_string(),
                 }),
-            )
+            );
         }
     };
     let avail_chain_id = match &params.avail_chain_id {
@@ -53,10 +52,9 @@ pub async fn get_justification(
                 StatusCode::BAD_REQUEST,
                 Json(JustificationResponse::Error {
                     success: false,
-                    error: "Missing required parameters: blockNumber and availChainId"
-                        .to_string(),
+                    error: "Missing required parameters: blockNumber and availChainId".to_string(),
                 }),
-            )
+            );
         }
     };
 

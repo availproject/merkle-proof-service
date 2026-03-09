@@ -130,7 +130,13 @@ impl EvmService {
         while current < to_block {
             let batch_end = (current + max_per_query).min(to_block);
             let logs = self
-                .query_logs(chain_id, contract_address, current, batch_end, event_signature)
+                .query_logs(
+                    chain_id,
+                    contract_address,
+                    current,
+                    batch_end,
+                    event_signature,
+                )
                 .await?;
             all_logs.extend(logs);
             current = batch_end + 1;
@@ -198,10 +204,7 @@ impl EvmService {
     }
 
     /// Binary search through sorted logs for the one containing `target_block`.
-    fn binary_search_log(
-        logs: &[Log],
-        target_block: u32,
-    ) -> anyhow::Result<DataCommitmentRange> {
+    fn binary_search_log(logs: &[Log], target_block: u32) -> anyhow::Result<DataCommitmentRange> {
         let mut left = 0;
         let mut right = logs.len() - 1;
 
@@ -242,9 +245,7 @@ impl EvmService {
             .config
             .find_deployment(&hex_address, chain_id)
             .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "Deployment config not found for {hex_address} on chain {chain_id}"
-                )
+                anyhow::anyhow!("Deployment config not found for {hex_address} on chain {chain_id}")
             })?;
 
         let batch_size: u64 = 10_000;
@@ -285,7 +286,14 @@ impl EvmService {
         loop {
             let from = cursor.saturating_sub(batch_size);
             let logs = self
-                .query_logs_batched(chain_id, contract_address, from, cursor, event_sig, batch_size)
+                .query_logs_batched(
+                    chain_id,
+                    contract_address,
+                    from,
+                    cursor,
+                    event_sig,
+                    batch_size,
+                )
                 .await?;
 
             if logs.is_empty() {
@@ -337,15 +345,14 @@ impl EvmService {
         let contract = VectorX::VectorXInstance::new(contract_address, provider.clone());
         let latest_block_call = contract.latestBlock();
         let latest_block_fut = latest_block_call.call();
-        let current_block_fut =
-            provider.get_block_by_number(alloy::eips::BlockNumberOrTag::Latest);
+        let current_block_fut = provider.get_block_by_number(alloy::eips::BlockNumberOrTag::Latest);
 
         let (latest_vector_result, current_block_result) =
             tokio::join!(latest_block_fut, current_block_fut);
 
         let latest_vector_block = latest_vector_result?;
-        let current_block = current_block_result?
-            .ok_or_else(|| anyhow::anyhow!("Failed to get latest block"))?;
+        let current_block =
+            current_block_result?.ok_or_else(|| anyhow::anyhow!("Failed to get latest block"))?;
 
         let current_block_number = current_block.header.number;
         let current_block_timestamp = current_block.header.timestamp;

@@ -34,16 +34,14 @@ impl AvailService {
     pub async fn get_block_number(&self, block_hash: &str) -> anyhow::Result<u32> {
         let mut params = ArrayParams::new();
         params.insert(block_hash)?;
-        let header: serde_json::Value =
-            self.client.request("chain_getHeader", params).await?;
+        let header: serde_json::Value = self.client.request("chain_getHeader", params).await?;
 
         let number_hex = header
             .get("number")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing number in header"))?;
 
-        let number =
-            u32::from_str_radix(number_hex.strip_prefix("0x").unwrap_or(number_hex), 16)?;
+        let number = u32::from_str_radix(number_hex.strip_prefix("0x").unwrap_or(number_hex), 16)?;
         Ok(number)
     }
 
@@ -57,8 +55,7 @@ impl AvailService {
         // Get header with extension
         let mut params = ArrayParams::new();
         params.insert(&block_hash)?;
-        let header_json: serde_json::Value =
-            self.client.request("chain_getHeader", params).await?;
+        let header_json: serde_json::Value = self.client.request("chain_getHeader", params).await?;
 
         let extension = header_json
             .get("extension")
@@ -113,16 +110,14 @@ impl AvailService {
 
         let mut params = ArrayParams::new();
         params.insert(&hash)?;
-        let header: serde_json::Value =
-            self.client.request("chain_getHeader", params).await?;
+        let header: serde_json::Value = self.client.request("chain_getHeader", params).await?;
 
         let number_hex = header
             .get("number")
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Missing number in header"))?;
 
-        let number =
-            u64::from_str_radix(number_hex.strip_prefix("0x").unwrap_or(number_hex), 16)?;
+        let number = u64::from_str_radix(number_hex.strip_prefix("0x").unwrap_or(number_hex), 16)?;
         Ok(number)
     }
 }
