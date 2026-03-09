@@ -6,7 +6,6 @@ use alloy::providers::{Provider, RootProvider};
 use alloy::rpc::types::{Filter, Log};
 use alloy::sol;
 use alloy::sol_types::SolEvent;
-use tokio::sync::RwLock;
 
 use crate::config::AppConfig;
 
@@ -61,40 +60,37 @@ pub struct HealthInfo {
 #[derive(Clone)]
 pub struct EvmService {
     config: Arc<AppConfig>,
-    providers: Arc<RwLock<HashMap<u64, RootProvider>>>,
+    /// One provider per chain ID, created at startup.
+    providers: Arc<HashMap<u64, RootProvider>>,
 }
 
 impl EvmService {
+    /// Build the service eagerly: one HTTP provider per configured RPC chain.
     pub fn new(config: Arc<AppConfig>) -> Self {
-        Self {
-            config,
-            providers: Arc::new(RwLock::new(HashMap::new())),
-        }
-    }
+        let mut providers = HashMap::new();
 
-    /// Get or create a cached provider for the given chain ID.
-    /// The provider reuses the underlying HTTP connection pool across calls.
-    async fn get_provider(&self, chain_id: u64) -> anyhow::Result<RootProvider> {
-        // Fast path: check if we already have it
-        {
-            let cache = self.providers.read().await;
-            if let Some(provider) = cache.get(&chain_id) {
-                return Ok(provider.clone());
+        for (&chain_id, rpc_url) in &config.rpc_urls {
+            match rpc_url.parse::<url::Url>() {
+                Ok(url) => {
+                    providers.insert(chain_id, RootProvider::new_http(url));
+                    tracing::info!(chain_id, "EVM HTTP provider ready");
+                }
+                Err(e) => {
+                    tracing::warn!(chain_id, error = %e, "Skipping invalid RPC URL");
+                }
             }
         }
 
-        // Slow path: create and cache
-        let rpc_url = self
-            .config
-            .get_rpc_url(chain_id)
-            .ok_or_else(|| anyhow::anyhow!("Missing RPC URL for chain {chain_id}"))?;
+        Self {
+            config,
+            providers: Arc::new(providers),
+        }
+    }
 
-        let url: url::Url = rpc_url.parse()?;
-        let provider = RootProvider::new_http(url);
-
-        let mut cache = self.providers.write().await;
-        cache.insert(chain_id, provider.clone());
-        Ok(provider)
+    fn get_provider(&self, chain_id: u64) -> anyhow::Result<&RootProvider> {
+        self.providers
+            .get(&chain_id)
+            .ok_or_else(|| anyhow::anyhow!("No provider for chain {chain_id}"))
     }
 
     /// Query event logs from the contract.
@@ -106,7 +102,7 @@ impl EvmService {
         to_block: u64,
         event_signature: FixedBytes<32>,
     ) -> anyhow::Result<Vec<Log>> {
-        let provider = self.get_provider(chain_id).await?;
+        let provider = self.get_provider(chain_id)?;
 
         let filter = Filter::new()
             .address(contract_address)
@@ -167,7 +163,7 @@ impl EvmService {
         contract_address: Address,
         target_block: u32,
     ) -> anyhow::Result<Option<DataCommitmentRange>> {
-        let provider = self.get_provider(chain_id).await?;
+        let provider = self.get_provider(chain_id)?;
         let latest_block = provider.get_block_number().await?;
 
         let batch_size: u64 = 10_000;
@@ -238,7 +234,7 @@ impl EvmService {
         contract_address: Address,
         chain_id: u64,
     ) -> anyhow::Result<RangeInfo> {
-        let provider = self.get_provider(chain_id).await?;
+        let provider = self.get_provider(chain_id)?;
         let latest_block = provider.get_block_number().await?;
 
         let hex_address = format!("0x{}", hex::encode(contract_address.as_slice()));
@@ -318,8 +314,8 @@ impl EvmService {
         chain_id: u64,
         contract_address: Address,
     ) -> anyhow::Result<u32> {
-        let provider = self.get_provider(chain_id).await?;
-        let contract = VectorX::VectorXInstance::new(contract_address, provider);
+        let provider = self.get_provider(chain_id)?;
+        let contract = VectorX::VectorXInstance::new(contract_address, provider.clone());
         let latest = contract.latestBlock().call().await?;
         Ok(latest)
     }
@@ -327,7 +323,7 @@ impl EvmService {
     /// Get the health status for a VectorX contract.
     ///
     /// Fetches the latest vector block and log activity in parallel where possible,
-    /// reusing a single provider instance across all calls.
+    /// reusing the single provider instance for this chain.
     pub async fn get_health_status(
         &self,
         contract_address: Address,
@@ -335,7 +331,7 @@ impl EvmService {
         avail_head_block: u64,
         max_delay_seconds: u64,
     ) -> anyhow::Result<HealthInfo> {
-        let provider = self.get_provider(chain_id).await?;
+        let provider = self.get_provider(chain_id)?;
 
         // 1. Fetch latest vector block and current ETH block in parallel
         let contract = VectorX::VectorXInstance::new(contract_address, provider.clone());

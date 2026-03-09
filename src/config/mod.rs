@@ -80,16 +80,6 @@ impl AppConfig {
         })
     }
 
-    pub fn get_rpc_url(&self, chain_id: u64) -> Option<&str> {
-        self.rpc_urls.get(&chain_id).map(|s| s.as_str())
-    }
-
-    pub fn get_avail_ws(&self, chain_name: &str) -> Option<&str> {
-        self.avail_ws_endpoints
-            .get(&chain_name.to_lowercase())
-            .map(|s| s.as_str())
-    }
-
     pub fn find_deployment(&self, contract_address: &str, chain_id: u64) -> Option<&DeploymentEntry> {
         self.deployments.iter().find(|d| {
             d.contract_address.to_lowercase() == contract_address.to_lowercase()
