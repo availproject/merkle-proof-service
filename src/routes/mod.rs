@@ -15,5 +15,7 @@ use crate::services::evm::EvmService;
 pub struct AppState {
     pub evm_service: EvmService,
     pub avail_service: AvailService,
+    /// The Avail network this deployment serves (e.g. "turing", "mainnet", "hex").
+    pub avail_network: String,
     pub database: Arc<Database>,
 }

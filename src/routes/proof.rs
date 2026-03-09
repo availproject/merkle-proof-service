@@ -66,6 +66,13 @@ pub async fn get_proof(
         None => return error_response("Invalid parameters!"),
     };
 
+    if chain_name.to_lowercase() != state.avail_network {
+        return error_response(&format!(
+            "This deployment serves '{}', not '{}'",
+            state.avail_network, chain_name
+        ));
+    }
+
     tracing::info!(
         chain_name = %chain_name,
         ethereum_chain_id = ethereum_chain_id,
@@ -78,11 +85,7 @@ pub async fn get_proof(
     let requested_block: u32;
 
     if let Some(hash) = &params.block_hash {
-        match state
-            .avail_service
-            .get_block_number(hash, &chain_name)
-            .await
-        {
+        match state.avail_service.get_block_number(hash).await {
             Ok(num) => requested_block = num,
             Err(_) => return error_response("Invalid block hash!"),
         }
@@ -128,9 +131,7 @@ pub async fn get_proof(
     }
 
     // Get block hash and data commitment range concurrently
-    let block_hash_fut = state
-        .avail_service
-        .get_block_hash(requested_block, &chain_name);
+    let block_hash_fut = state.avail_service.get_block_hash(requested_block);
     let data_commitment_fut = state
         .evm_service
         .get_data_commitment_range_for_block(ethereum_chain_id, address, requested_block);
@@ -173,7 +174,6 @@ pub async fn get_proof(
         .fetch_data_roots_for_range(
             data_commitment_range.start_block_number + 1,
             data_commitment_range.end_block_number + 1,
-            &chain_name,
         )
         .await
     {

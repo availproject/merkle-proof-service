@@ -71,16 +71,12 @@ pub async fn get_health(
         "Health request received"
     );
 
-    let chain_name_lower = chain_name.to_lowercase();
-    let supported_chains = state.avail_service.config_chain_names();
-
-    if !supported_chains.iter().any(|c| c == &chain_name_lower) {
+    if chain_name.to_lowercase() != state.avail_network {
         return Json(HealthResponse::Error {
             success: false,
             error: format!(
-                "Chain name {} is not supported. Supported chains: {}",
-                chain_name_lower,
-                supported_chains.join(", ")
+                "This deployment serves '{}', not '{}'",
+                state.avail_network, chain_name
             ),
         });
     }
@@ -100,11 +96,7 @@ pub async fn get_health(
     };
 
     // Get finalized head from Avail
-    let avail_head = match state
-        .avail_service
-        .get_finalized_head_block(&chain_name)
-        .await
-    {
+    let avail_head = match state.avail_service.get_finalized_head_block().await {
         Ok(h) => h,
         Err(e) => {
             tracing::error!(error = %e, "Failed to get Avail finalized head");
