@@ -5,7 +5,8 @@ use serde::Deserialize;
 #[derive(Debug, Clone)]
 pub struct AppConfig {
     pub rpc_urls: HashMap<u64, String>,
-    pub avail_ws_endpoints: HashMap<String, String>,
+    pub avail_rpc_url: String,
+    pub avail_network: String,
     pub database_url: String,
     pub server_host: String,
     pub server_port: u16,
@@ -45,20 +46,16 @@ impl AppConfig {
             }
         }
 
-        let mut avail_ws_endpoints = HashMap::new();
-        for name in &["hex", "turing", "mainnet"] {
-            let key = format!("AVAIL_WS_{}", name.to_uppercase());
-            if let Ok(url) = std::env::var(&key) {
-                if !url.is_empty() {
-                    avail_ws_endpoints.insert(name.to_string(), url);
-                }
-            }
-        }
+        let avail_rpc_url = std::env::var("AVAIL_RPC_URL")
+            .map_err(|_| anyhow::anyhow!("AVAIL_RPC_URL is required"))?;
 
-        let database_url =
-            std::env::var("DATABASE_URL").unwrap_or_else(|_| {
-                "postgresql://myuser:mypassword@localhost:5432/vectorx-indexer".to_string()
-            });
+        let avail_network = std::env::var("AVAIL_NETWORK")
+            .map_err(|_| anyhow::anyhow!("AVAIL_NETWORK is required"))?
+            .to_lowercase();
+
+        let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| {
+            "postgresql://myuser:mypassword@localhost:5432/vectorx-indexer".to_string()
+        });
 
         let server_host =
             std::env::var("SERVER_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
@@ -72,7 +69,8 @@ impl AppConfig {
 
         Ok(Self {
             rpc_urls,
-            avail_ws_endpoints,
+            avail_rpc_url,
+            avail_network,
             database_url,
             server_host,
             server_port,
@@ -80,7 +78,11 @@ impl AppConfig {
         })
     }
 
-    pub fn find_deployment(&self, contract_address: &str, chain_id: u64) -> Option<&DeploymentEntry> {
+    pub fn find_deployment(
+        &self,
+        contract_address: &str,
+        chain_id: u64,
+    ) -> Option<&DeploymentEntry> {
         self.deployments.iter().find(|d| {
             d.contract_address.to_lowercase() == contract_address.to_lowercase()
                 && d.contract_chain_id == chain_id

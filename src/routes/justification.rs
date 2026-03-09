@@ -60,6 +60,19 @@ pub async fn get_justification(
         }
     };
 
+    if avail_chain_id.to_lowercase() != state.avail_network {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(JustificationResponse::Error {
+                success: false,
+                error: format!(
+                    "This deployment serves '{}', not '{}'",
+                    state.avail_network, avail_chain_id
+                ),
+            }),
+        );
+    }
+
     tracing::info!(
         block_number = block_number,
         avail_chain_id = %avail_chain_id,

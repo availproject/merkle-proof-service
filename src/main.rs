@@ -32,11 +32,14 @@ async fn main() -> anyhow::Result<()> {
     let database = Arc::new(Database::new(&config.database_url).await?);
 
     let evm_service = EvmService::new(config.clone());
-    let avail_service = AvailService::new(&config.avail_ws_endpoints)?;
+    let avail_service = AvailService::new(&config.avail_rpc_url)?;
+
+    tracing::info!(network = %config.avail_network, "Avail network configured");
 
     let state = AppState {
         evm_service,
         avail_service,
+        avail_network: config.avail_network.clone(),
         database,
     };
 
