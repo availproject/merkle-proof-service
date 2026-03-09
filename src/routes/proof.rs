@@ -1,5 +1,5 @@
-use axum::extract::{Query, State};
 use axum::Json;
+use axum::extract::{Query, State};
 use serde::{Deserialize, Serialize};
 
 use alloy::primitives::Address;
@@ -22,8 +22,13 @@ pub struct ProofQuery {
 #[derive(Debug, Serialize)]
 #[serde(untagged)]
 pub enum ProofResponse {
-    Success { data: ProofData },
-    Error { success: bool, error: serde_json::Value },
+    Success {
+        data: ProofData,
+    },
+    Error {
+        success: bool,
+        error: serde_json::Value,
+    },
 }
 
 #[derive(Debug, Serialize)]
@@ -108,12 +113,16 @@ pub async fn get_proof(
     };
 
     // Get block range
-    let block_range = match state.evm_service.get_block_range(address, ethereum_chain_id).await {
+    let block_range = match state
+        .evm_service
+        .get_block_range(address, ethereum_chain_id)
+        .await
+    {
         Ok(range) => range,
         Err(_) => {
             return error_response(
                 "Getting the block range covered by the VectorX contract failed!",
-            )
+            );
         }
     };
 
@@ -132,9 +141,11 @@ pub async fn get_proof(
 
     // Get block hash and data commitment range concurrently
     let block_hash_fut = state.avail_service.get_block_hash(requested_block);
-    let data_commitment_fut = state
-        .evm_service
-        .get_data_commitment_range_for_block(ethereum_chain_id, address, requested_block);
+    let data_commitment_fut = state.evm_service.get_data_commitment_range_for_block(
+        ethereum_chain_id,
+        address,
+        requested_block,
+    );
 
     let (block_hash_result, data_commitment_result) =
         tokio::join!(block_hash_fut, data_commitment_fut);
@@ -152,7 +163,7 @@ pub async fn get_proof(
         Ok(None) => {
             return error_response(
                 "Requested block is not in the range of blocks contained in the VectorX contract.",
-            )
+            );
         }
         Err(e) => {
             tracing::error!(error = %e, "Failed to get data commitment range");
@@ -203,7 +214,7 @@ pub async fn get_proof(
             return Json(ProofResponse::Error {
                 success: false,
                 error: serde_json::to_value(e).unwrap_or_default(),
-            })
+            });
         }
     };
 

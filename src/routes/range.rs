@@ -1,5 +1,5 @@
-use axum::extract::{Query, State};
 use axum::Json;
+use axum::extract::{Query, State};
 use serde::{Deserialize, Serialize};
 
 use alloy::primitives::Address;
@@ -39,7 +39,7 @@ pub async fn get_range(
             return Json(RangeResponse::Error {
                 success: false,
                 error: None,
-            })
+            });
         }
     };
     let address_str = match &params.contract_address {
@@ -48,7 +48,7 @@ pub async fn get_range(
             return Json(RangeResponse::Error {
                 success: false,
                 error: None,
-            })
+            });
         }
     };
 
@@ -68,7 +68,7 @@ pub async fn get_range(
             return Json(RangeResponse::Error {
                 success: false,
                 error: Some("Invalid contract address".to_string()),
-            })
+            });
         }
     };
 

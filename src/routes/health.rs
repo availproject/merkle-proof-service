@@ -1,5 +1,5 @@
-use axum::extract::{Query, State};
 use axum::Json;
+use axum::extract::{Query, State};
 use serde::{Deserialize, Serialize};
 
 use alloy::primitives::Address;
@@ -41,7 +41,7 @@ pub async fn get_health(
             return Json(HealthResponse::Error {
                 success: false,
                 error: "Missing required parameters".to_string(),
-            })
+            });
         }
     };
     let ethereum_chain_id = match params.contract_chain_id {
@@ -50,7 +50,7 @@ pub async fn get_health(
             return Json(HealthResponse::Error {
                 success: false,
                 error: "Missing required parameters".to_string(),
-            })
+            });
         }
     };
     let address_str = match &params.contract_address {
@@ -59,7 +59,7 @@ pub async fn get_health(
             return Json(HealthResponse::Error {
                 success: false,
                 error: "Missing required parameters".to_string(),
-            })
+            });
         }
     };
     let max_delay_hours = params.max_delay_hours.unwrap_or(4);
@@ -91,7 +91,7 @@ pub async fn get_health(
             return Json(HealthResponse::Error {
                 success: false,
                 error: "Invalid contract address".to_string(),
-            })
+            });
         }
     };
 
