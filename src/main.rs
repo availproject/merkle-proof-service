@@ -32,7 +32,7 @@ async fn main() -> anyhow::Result<()> {
     let database = Arc::new(Database::new(&config.database_url).await?);
 
     let evm_service = EvmService::new(config.clone());
-    let avail_service = AvailService::new(config.clone());
+    let avail_service = AvailService::new(&config.avail_ws_endpoints)?;
 
     let state = AppState {
         evm_service,

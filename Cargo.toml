@@ -32,7 +32,7 @@ alloy = { version = "1", features = [
 ] }
 
 # Avail (substrate-based chain interaction via JSON-RPC)
-jsonrpsee = { version = "0.25", features = ["ws-client"] }
+jsonrpsee = { version = "0.25", features = ["http-client"] }
 
 # Crypto
 sha2 = { version = "0.10" }

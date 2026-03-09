@@ -3,52 +3,43 @@ use std::sync::Arc;
 
 use jsonrpsee::core::client::ClientT;
 use jsonrpsee::core::params::ArrayParams;
-use jsonrpsee::ws_client::{WsClient, WsClientBuilder};
-use tokio::sync::RwLock;
-
-use crate::config::AppConfig;
+use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
 
 #[derive(Clone)]
 pub struct AvailService {
-    config: Arc<AppConfig>,
-    clients: Arc<RwLock<HashMap<String, Arc<WsClient>>>>,
+    /// One HTTP client per chain name, created at startup.
+    clients: Arc<HashMap<String, HttpClient>>,
 }
 
 impl AvailService {
-    pub fn new(config: Arc<AppConfig>) -> Self {
-        Self {
-            config,
-            clients: Arc::new(RwLock::new(HashMap::new())),
+    /// Build the service eagerly: one HTTP transport per configured Avail chain.
+    /// Panics at startup if a URL is malformed — fail fast.
+    pub fn new(avail_ws_endpoints: &HashMap<String, String>) -> anyhow::Result<Self> {
+        let mut clients = HashMap::new();
+
+        for (chain_name, url) in avail_ws_endpoints {
+            // The existing config keys say "WS" but plain HTTP RPC endpoints work too.
+            // If the URL starts with ws(s):// swap to http(s):// — jsonrpsee HTTP
+            // client doesn't speak WebSocket.
+            let http_url = url
+                .replacen("wss://", "https://", 1)
+                .replacen("ws://", "http://", 1);
+
+            let client = HttpClientBuilder::default().build(&http_url)?;
+            clients.insert(chain_name.to_lowercase(), client);
+
+            tracing::info!(chain = %chain_name, url = %http_url, "Avail HTTP client ready");
         }
+
+        Ok(Self {
+            clients: Arc::new(clients),
+        })
     }
 
-    /// Get or create a cached WS client for the given chain name.
-    /// Reconnects automatically if the previous connection is no longer active.
-    async fn get_client(&self, chain_name: &str) -> anyhow::Result<Arc<WsClient>> {
-        let key = chain_name.to_lowercase();
-
-        // Fast path: check cache
-        {
-            let cache = self.clients.read().await;
-            if let Some(client) = cache.get(&key) {
-                if client.is_connected() {
-                    return Ok(client.clone());
-                }
-            }
-        }
-
-        // Slow path: build new client
-        let ws_url = self
-            .config
-            .get_avail_ws(chain_name)
-            .ok_or_else(|| anyhow::anyhow!("Missing Avail WS URL for chain {chain_name}"))?;
-
-        let client = WsClientBuilder::default().build(ws_url).await?;
-        let client = Arc::new(client);
-
-        let mut cache = self.clients.write().await;
-        cache.insert(key, client.clone());
-        Ok(client)
+    fn get_client(&self, chain_name: &str) -> anyhow::Result<&HttpClient> {
+        self.clients
+            .get(&chain_name.to_lowercase())
+            .ok_or_else(|| anyhow::anyhow!("No Avail client for chain {chain_name}"))
     }
 
     /// Get the block hash for a given block number.
@@ -57,7 +48,7 @@ impl AvailService {
         block_number: u32,
         chain_name: &str,
     ) -> anyhow::Result<String> {
-        let client = self.get_client(chain_name).await?;
+        let client = self.get_client(chain_name)?;
 
         let mut params = ArrayParams::new();
         params.insert(block_number)?;
@@ -72,7 +63,7 @@ impl AvailService {
         block_hash: &str,
         chain_name: &str,
     ) -> anyhow::Result<u32> {
-        let client = self.get_client(chain_name).await?;
+        let client = self.get_client(chain_name)?;
 
         let mut params = ArrayParams::new();
         params.insert(block_hash)?;
@@ -94,7 +85,7 @@ impl AvailService {
         block_number: u32,
         chain_name: &str,
     ) -> anyhow::Result<[u8; 32]> {
-        let client = self.get_client(chain_name).await?;
+        let client = self.get_client(chain_name)?;
 
         // Get block hash
         let mut params = ArrayParams::new();
@@ -151,18 +142,14 @@ impl AvailService {
         Ok(data_roots)
     }
 
-    /// Get the list of supported chain names from the configuration.
+    /// Get the list of supported chain names.
     pub fn config_chain_names(&self) -> Vec<String> {
-        self.config
-            .avail_ws_endpoints
-            .keys()
-            .cloned()
-            .collect()
+        self.clients.keys().cloned().collect()
     }
 
     /// Get the finalized head block number.
     pub async fn get_finalized_head_block(&self, chain_name: &str) -> anyhow::Result<u64> {
-        let client = self.get_client(chain_name).await?;
+        let client = self.get_client(chain_name)?;
 
         let params = ArrayParams::new();
         let hash: String = client.request("chain_getFinalizedHead", params).await?;
