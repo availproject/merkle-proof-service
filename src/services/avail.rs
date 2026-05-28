@@ -85,16 +85,34 @@ impl AvailService {
     }
 
     /// Fetch data roots for a range of blocks [start_block, end_block) (end exclusive).
+    /// Fetches concurrently (bounded) since each block needs two sequential RPC calls.
     pub async fn fetch_data_roots_for_range(
         &self,
         start_block: u32,
         end_block: u32,
     ) -> anyhow::Result<Vec<[u8; 32]>> {
-        let mut data_roots = Vec::new();
+        const CONCURRENCY: usize = 16;
+
+        let total = end_block.saturating_sub(start_block) as usize;
+        let mut data_roots: Vec<[u8; 32]> = vec![[0u8; 32]; total];
+
+        let semaphore = Arc::new(tokio::sync::Semaphore::new(CONCURRENCY));
+        let mut set = tokio::task::JoinSet::new();
 
         for block_number in start_block..end_block {
-            let root = self.fetch_data_root(block_number).await?;
-            data_roots.push(root);
+            let idx = (block_number - start_block) as usize;
+            let svc = self.clone();
+            let permit = semaphore.clone().acquire_owned().await?;
+            set.spawn(async move {
+                let _permit = permit;
+                let root = svc.fetch_data_root(block_number).await?;
+                Ok::<(usize, [u8; 32]), anyhow::Error>((idx, root))
+            });
+        }
+
+        while let Some(joined) = set.join_next().await {
+            let (idx, root) = joined??;
+            data_roots[idx] = root;
         }
 
         Ok(data_roots)

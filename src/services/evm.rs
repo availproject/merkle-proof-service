@@ -94,6 +94,10 @@ impl EvmService {
     }
 
     /// Query event logs from the contract.
+    ///
+    /// If `to_block` lands beyond the serving node's head (common with load-balanced
+    /// RPCs whose `eth_getLogs` backend lags `eth_blockNumber`), retry against the
+    /// node's own `latest` head instead of failing.
     pub async fn query_logs(
         &self,
         chain_id: u64,
@@ -104,14 +108,20 @@ impl EvmService {
     ) -> anyhow::Result<Vec<Log>> {
         let provider = self.get_provider(chain_id)?;
 
-        let filter = Filter::new()
+        let base = Filter::new()
             .address(contract_address)
             .event_signature(event_signature)
-            .from_block(from_block)
-            .to_block(to_block);
+            .from_block(from_block);
 
-        let logs = provider.get_logs(&filter).await?;
-        Ok(logs)
+        match provider.get_logs(&base.clone().to_block(to_block)).await {
+            Ok(logs) => Ok(logs),
+            Err(e) if e.to_string().contains("beyond current head") => {
+                let filter = base.to_block(alloy::eips::BlockNumberOrTag::Latest);
+                let logs = provider.get_logs(&filter).await?;
+                Ok(logs)
+            }
+            Err(e) => Err(e.into()),
+        }
     }
 
     /// Query logs in batches of `max_per_query`.
