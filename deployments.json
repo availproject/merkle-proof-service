@@ -41,6 +41,12 @@
             "contractAddress": "0x054fd961708D8E2B9c10a63F6157c74458889F0a",
             "cursorStartBlock": 10933684,
             "availChainId": "hex"
+        },
+        {
+            "contractChainId": 11155111,
+            "contractAddress": "0x8e1a4bc4858fa9ce12447dfdcc23037ca1359cde",
+            "cursorStartBlock": 10973754,
+            "availChainId": "avail_infinity_hex"
         }
     ]
 }
