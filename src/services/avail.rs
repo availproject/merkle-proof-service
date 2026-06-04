@@ -71,8 +71,11 @@ impl AvailService {
             .next()
             .ok_or_else(|| anyhow::anyhow!("Extension has no version entries"))?;
 
+        // Extension layout varies by version: older V2/V3 nest the root under
+        // `commitment/dataRoot`, while V1 (this chain) exposes `dataRoot` directly.
         let data_root_hex = first_version
             .pointer("/commitment/dataRoot")
+            .or_else(|| first_version.pointer("/dataRoot"))
             .and_then(|v| v.as_str())
             .ok_or_else(|| anyhow::anyhow!("Data root not found for block {block_number}"))?;
 
