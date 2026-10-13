@@ -10,10 +10,10 @@ memory_limit   = "512Mi"
 [env]
 AVAIL_NETWORK = "SET-BEFORE-DEPLOY"
 AVAIL_RPC_URL = "SET-BEFORE-DEPLOY"
-RPC_11155111 = "https://ethereum-sepolia-rpc.publicnode.com"
 RUST_LOG = "info"
 SERVER_HOST = "0.0.0.0"
 SERVER_PORT = "3000"
 
 [secrets]
 DATABASE_URL = "/bridge/testnet/merkle-proof-service/DATABASE_URL"
+RPC_11155111 = "/bridge/testnet/shared/SEPOLIA_RPC_URL"
