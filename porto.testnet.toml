@@ -1,0 +1,19 @@
+[network]
+port = 3000
+
+[resources]
+cpu_request    = "100m"
+cpu_limit      = "500m"
+memory_request = "256Mi"
+memory_limit   = "512Mi"
+
+[env]
+AVAIL_NETWORK = "avail_infinity_turing"
+AVAIL_RPC_URL = "https://infinity-turing-rpc.avail.so/rpc"
+RUST_LOG = "info"
+SERVER_HOST = "0.0.0.0"
+SERVER_PORT = "3000"
+
+[secrets]
+DATABASE_URL = "/bridge/testnet/merkle-proof-service/DATABASE_URL"
+RPC_11155111 = "/bridge/testnet/shared/SEPOLIA_RPC_URL"
