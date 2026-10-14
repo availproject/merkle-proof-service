@@ -9,7 +9,7 @@ memory_limit   = "512Mi"
 
 [env]
 AVAIL_NETWORK = "avail_infinity_turing"
-AVAIL_RPC_URL = "wss://infinity-turing-rpc.avail.so/ws"
+AVAIL_RPC_URL = "https://infinity-turing-rpc.avail.so/rpc"
 RUST_LOG = "info"
 SERVER_HOST = "0.0.0.0"
 SERVER_PORT = "3000"
