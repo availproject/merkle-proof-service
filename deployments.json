@@ -50,8 +50,8 @@
         },
         {
             "contractChainId": 11155111,
-            "contractAddress": "SET-NEW-SP1VECTOR-ADDRESS",
-            "cursorStartBlock": "SET-SP1VECTOR-DEPLOY-BLOCK",
+            "contractAddress": "0x3920de8e8249e9bd931381bbe521487a128766e7",
+            "cursorStartBlock": 11912933,
             "availChainId": "avail_infinity_turing"
         }
     ]
