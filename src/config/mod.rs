@@ -2,7 +2,8 @@ use std::collections::HashMap;
 
 use serde::Deserialize;
 
-#[derive(Debug, Clone)]
+/// Not `Debug`, so connection settings stay out of logs.
+#[derive(Clone)]
 pub struct AppConfig {
     pub rpc_urls: HashMap<u64, String>,
     pub avail_rpc_url: String,

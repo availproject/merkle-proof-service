@@ -15,7 +15,7 @@ impl AvailService {
     pub fn new(rpc_url: &str) -> anyhow::Result<Self> {
         let client = HttpClientBuilder::default().build(rpc_url)?;
 
-        tracing::info!(url = %rpc_url, "Avail HTTP client ready");
+        tracing::info!("Avail HTTP client ready");
 
         Ok(Self {
             client: Arc::new(client),

@@ -1,12 +1,19 @@
 use std::collections::HashMap;
 use std::ops::RangeInclusive;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 
 use alloy::primitives::{Address, FixedBytes, U256};
 use alloy::providers::{Provider, RootProvider};
+use alloy::rpc::client::RpcClient;
+use alloy::rpc::json_rpc::{RequestPacket, ResponsePacket};
 use alloy::rpc::types::{Filter, Log};
 use alloy::sol;
 use alloy::sol_types::SolEvent;
+use alloy::transports::http::{Http, reqwest};
+use alloy::transports::utils::guess_local_url;
+use alloy::transports::{RpcError, TransportError, TransportErrorKind, TransportFut};
+use tower::Service;
 
 use crate::config::{AppConfig, DeploymentEntry};
 
@@ -64,6 +71,37 @@ pub struct HealthInfo {
     pub log_emitted: bool,
 }
 
+/// HTTP transport that strips the request URL from transport errors.
+#[derive(Clone)]
+struct UrlStrippingHttp(Http<reqwest::Client>);
+
+impl Service<RequestPacket> for UrlStrippingHttp {
+    type Response = ResponsePacket;
+    type Error = TransportError;
+    type Future = TransportFut<'static>;
+
+    fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
+        self.0.poll_ready(cx)
+    }
+
+    fn call(&mut self, req: RequestPacket) -> Self::Future {
+        let response = self.0.call(req);
+        Box::pin(async move { response.await.map_err(strip_url) })
+    }
+}
+
+fn strip_url(err: TransportError) -> TransportError {
+    match err {
+        RpcError::Transport(TransportErrorKind::Custom(source)) => {
+            match source.downcast::<reqwest::Error>() {
+                Ok(e) => TransportErrorKind::custom(e.without_url()),
+                Err(source) => RpcError::Transport(TransportErrorKind::Custom(source)),
+            }
+        }
+        other => other,
+    }
+}
+
 #[derive(Clone)]
 pub struct EvmService {
     config: Arc<AppConfig>,
@@ -79,7 +117,9 @@ impl EvmService {
         for (&chain_id, rpc_url) in &config.rpc_urls {
             match rpc_url.parse::<url::Url>() {
                 Ok(url) => {
-                    providers.insert(chain_id, RootProvider::new_http(url));
+                    let is_local = guess_local_url(&url);
+                    let client = RpcClient::new(UrlStrippingHttp(Http::new(url)), is_local);
+                    providers.insert(chain_id, RootProvider::new(client));
                     tracing::info!(chain_id, "EVM HTTP provider ready");
                 }
                 Err(e) => {
@@ -794,5 +834,25 @@ mod tests {
 
         let range = service.get_block_range(CONTRACT, CHAIN_ID).await.unwrap();
         assert_eq!((range.start, range.end), (50_001, 50_100));
+    }
+
+    #[tokio::test]
+    async fn test_rpc_error_has_no_url() {
+        // Nothing listens on port 1, so the request fails inside reqwest.
+        let mut config = test_config(1_000);
+        config
+            .rpc_urls
+            .insert(CHAIN_ID, "http://127.0.0.1:1/path-token".to_string());
+        let service = EvmService::new(Arc::new(config));
+
+        let err = service
+            .get_block_range(CONTRACT, CHAIN_ID)
+            .await
+            .unwrap_err();
+        let display = format!("{err:#}");
+        let debug = format!("{err:?}");
+        assert!(display.contains("error sending request"), "{display}");
+        assert!(!display.contains("path-token"), "{display}");
+        assert!(!debug.contains("path-token"), "{debug}");
     }
 }
