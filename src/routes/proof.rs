@@ -145,6 +145,7 @@ pub async fn get_proof(
         ethereum_chain_id,
         address,
         requested_block,
+        &block_range,
     );
 
     let (block_hash_result, data_commitment_result) =

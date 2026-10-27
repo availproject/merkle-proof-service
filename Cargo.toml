@@ -7,6 +7,7 @@ edition = "2024"
 # Web framework
 axum = { version = "0.8" }
 tokio = { version = "1", features = ["full"] }
+tower = { version = "0.5" }
 tower-http = { version = "0.6", features = ["cors"] }
 
 # Serialization
@@ -27,6 +28,7 @@ chrono = { version = "0.4", features = ["serde"] }
 # Ethereum / EVM
 alloy = { version = "1", features = [
     "full",
+    "json-rpc",
     "provider-http",
     "sol-types",
 ] }
