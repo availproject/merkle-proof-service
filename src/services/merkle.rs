@@ -12,6 +12,12 @@ pub fn compute_merkle_branch(
     if data_roots.len() != commitment_tree_size {
         return Err("Invalid number of leaves");
     }
+    if !commitment_tree_size.is_power_of_two() {
+        return Err("Commitment tree size must be a power of two");
+    }
+    if index >= commitment_tree_size {
+        return Err("Leaf index is outside the tree");
+    }
 
     let mut nodes: Vec<[u8; 32]> = data_roots.to_vec();
     let mut branch: Vec<[u8; 32]> = Vec::new();
@@ -125,6 +131,20 @@ mod tests {
     fn test_invalid_leaf_count() {
         let leaves = vec![[0u8; 32]; 3];
         let result = compute_merkle_branch(4, &leaves, 0);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_index_out_of_range() {
+        let leaves = vec![[0u8; 32]; 4];
+        let result = compute_merkle_branch(4, &leaves, 4);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_tree_size_not_power_of_two() {
+        let leaves = vec![[0u8; 32]; 3];
+        let result = compute_merkle_branch(3, &leaves, 0);
         assert!(result.is_err());
     }
 }

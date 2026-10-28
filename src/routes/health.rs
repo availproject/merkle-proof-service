@@ -102,7 +102,7 @@ pub async fn get_health(
             tracing::error!(error = %e, "Failed to get Avail finalized head");
             return Json(HealthResponse::Error {
                 success: false,
-                error: format!("Failed to connect to Avail chain: {e}"),
+                error: "Failed to connect to Avail chain".to_string(),
             });
         }
     };
@@ -119,7 +119,7 @@ pub async fn get_health(
             tracing::error!(error = %e, "Failed to get health status");
             Json(HealthResponse::Error {
                 success: false,
-                error: format!("Failed to get health status: {e}"),
+                error: "Failed to get health status".to_string(),
             })
         }
     }

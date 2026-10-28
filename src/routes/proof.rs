@@ -145,6 +145,7 @@ pub async fn get_proof(
         ethereum_chain_id,
         address,
         requested_block,
+        &block_range,
     );
 
     let (block_hash_result, data_commitment_result) =
@@ -167,10 +168,7 @@ pub async fn get_proof(
         }
         Err(e) => {
             tracing::error!(error = %e, "Failed to get data commitment range");
-            return Json(ProofResponse::Error {
-                success: false,
-                error: serde_json::to_value(format!("{e}")).unwrap_or_default(),
-            });
+            return error_response("Getting the data commitment range failed!");
         }
     };
 
@@ -191,10 +189,7 @@ pub async fn get_proof(
         Ok(roots) => roots,
         Err(e) => {
             tracing::error!(error = %e, "Failed to fetch data roots");
-            return Json(ProofResponse::Error {
-                success: false,
-                error: serde_json::to_value(format!("{e}")).unwrap_or_default(),
-            });
+            return error_response("Fetching data roots failed!");
         }
     };
 
