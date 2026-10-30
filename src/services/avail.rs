@@ -4,6 +4,9 @@ use jsonrpsee::core::client::ClientT;
 use jsonrpsee::core::params::ArrayParams;
 use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
 
+/// Data-root fetches that run at the same time for one range.
+const DATA_ROOT_CONCURRENCY: usize = 16;
+
 /// Avail RPC client. A single HTTP transport created at startup for one Avail network.
 #[derive(Clone)]
 pub struct AvailService {
@@ -89,31 +92,34 @@ impl AvailService {
 
     /// Fetch data roots for a range of blocks [start_block, end_block) (end exclusive).
     /// Fetches concurrently (bounded) since each block needs two sequential RPC calls.
+    /// Stops at the first failed fetch, because the range then cannot be proven.
     pub async fn fetch_data_roots_for_range(
         &self,
         start_block: u32,
         end_block: u32,
     ) -> anyhow::Result<Vec<[u8; 32]>> {
-        const CONCURRENCY: usize = 16;
-
         let total = end_block.saturating_sub(start_block) as usize;
         let mut data_roots: Vec<[u8; 32]> = vec![[0u8; 32]; total];
 
-        let semaphore = Arc::new(tokio::sync::Semaphore::new(CONCURRENCY));
+        let mut blocks = start_block..end_block;
         let mut set = tokio::task::JoinSet::new();
 
-        for block_number in start_block..end_block {
-            let idx = (block_number - start_block) as usize;
-            let svc = self.clone();
-            let permit = semaphore.clone().acquire_owned().await?;
-            set.spawn(async move {
-                let _permit = permit;
-                let root = svc.fetch_data_root(block_number).await?;
-                Ok::<(usize, [u8; 32]), anyhow::Error>((idx, root))
-            });
-        }
-
-        while let Some(joined) = set.join_next().await {
+        loop {
+            while set.len() < DATA_ROOT_CONCURRENCY {
+                let Some(block_number) = blocks.next() else {
+                    break;
+                };
+                let idx = (block_number - start_block) as usize;
+                let svc = self.clone();
+                set.spawn(async move {
+                    let root = svc.fetch_data_root(block_number).await?;
+                    Ok::<(usize, [u8; 32]), anyhow::Error>((idx, root))
+                });
+            }
+            let Some(joined) = set.join_next().await else {
+                break;
+            };
+            // On an error, returning drops the set, which aborts the fetches still running.
             let (idx, root) = joined??;
             data_roots[idx] = root;
         }
@@ -140,5 +146,37 @@ impl AvailService {
 
         let number = u64::from_str_radix(number_hex.strip_prefix("0x").unwrap_or(number_hex), 16)?;
         Ok(number)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    #[tokio::test]
+    async fn test_data_root_fetch_stops_at_first_error() {
+        // The RPC rejects every call, so the first fetch already fails.
+        let calls = Arc::new(AtomicUsize::new(0));
+        let counter = calls.clone();
+        let app = axum::Router::new().route(
+            "/",
+            axum::routing::post(move || {
+                let counter = counter.clone();
+                async move {
+                    counter.fetch_add(1, Ordering::SeqCst);
+                    axum::http::StatusCode::TOO_MANY_REQUESTS
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await });
+
+        let service = AvailService::new(&format!("http://{addr}/")).unwrap();
+        assert!(service.fetch_data_roots_for_range(1, 385).await.is_err());
+        // Only the fetches already running may still reach the RPC.
+        let calls = calls.load(Ordering::SeqCst);
+        assert!(calls <= 2 * DATA_ROOT_CONCURRENCY, "{calls} calls");
     }
 }
