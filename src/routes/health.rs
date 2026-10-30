@@ -27,6 +27,14 @@ pub enum HealthResponse {
     },
 }
 
+/// The longest look-back of the health check. A larger value would scan most of the EVM chain.
+const MAX_DELAY_HOURS: u64 = 168;
+
+/// The requested look-back in hours, 4 by default.
+fn max_delay_hours(requested: Option<u64>) -> u64 {
+    requested.unwrap_or(4).min(MAX_DELAY_HOURS)
+}
+
 /// GET /api/health
 ///
 /// Returns the health status of a VectorX light client: how far behind the Avail chain head,
@@ -62,7 +70,7 @@ pub async fn get_health(
             });
         }
     };
-    let max_delay_hours = params.max_delay_hours.unwrap_or(4);
+    let max_delay_hours = max_delay_hours(params.max_delay_hours);
 
     tracing::info!(
         chain_name = %chain_name,
@@ -122,5 +130,18 @@ pub async fn get_health(
                 error: "Failed to get health status".to_string(),
             })
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_max_delay_hours_is_capped() {
+        assert_eq!(max_delay_hours(None), 4);
+        assert_eq!(max_delay_hours(Some(24)), 24);
+        assert_eq!(max_delay_hours(Some(10_000)), MAX_DELAY_HOURS);
+        assert_eq!(max_delay_hours(Some(u64::MAX)), MAX_DELAY_HOURS);
     }
 }

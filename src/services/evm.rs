@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::ops::RangeInclusive;
 use std::sync::Arc;
 use std::task::{Context, Poll};
+use std::time::Duration;
 
 use alloy::primitives::{Address, FixedBytes, U256};
 use alloy::providers::{Provider, RootProvider};
@@ -16,6 +17,10 @@ use alloy::transports::{RpcError, TransportError, TransportErrorKind, TransportF
 use tower::Service;
 
 use crate::config::{AppConfig, DeploymentEntry};
+
+/// reqwest has no timeouts by default, so without these a stalled RPC holds the request forever.
+const RPC_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+const RPC_TIMEOUT: Duration = Duration::from_secs(60);
 
 sol! {
     #[sol(rpc)]
@@ -112,13 +117,23 @@ pub struct EvmService {
 impl EvmService {
     /// Build the service eagerly: one HTTP provider per configured RPC chain.
     pub fn new(config: Arc<AppConfig>) -> Self {
+        Self::with_timeout(config, RPC_TIMEOUT)
+    }
+
+    fn with_timeout(config: Arc<AppConfig>, timeout: Duration) -> Self {
+        let http = reqwest::Client::builder()
+            .connect_timeout(RPC_CONNECT_TIMEOUT)
+            .timeout(timeout)
+            .build()
+            .expect("Failed to build the EVM HTTP client");
         let mut providers = HashMap::new();
 
         for (&chain_id, rpc_url) in &config.rpc_urls {
             match rpc_url.parse::<url::Url>() {
                 Ok(url) => {
                     let is_local = guess_local_url(&url);
-                    let client = RpcClient::new(UrlStrippingHttp(Http::new(url)), is_local);
+                    let transport = UrlStrippingHttp(Http::with_client(http.clone(), url));
+                    let client = RpcClient::new(transport, is_local);
                     providers.insert(chain_id, RootProvider::new(client));
                     tracing::info!(chain_id, "EVM HTTP provider ready");
                 }
@@ -834,6 +849,34 @@ mod tests {
 
         let range = service.get_block_range(CONTRACT, CHAIN_ID).await.unwrap();
         assert_eq!((range.start, range.end), (50_001, 50_100));
+    }
+
+    #[tokio::test]
+    async fn test_stalled_rpc_times_out() {
+        // The listener accepts connections but never answers.
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            let mut open = Vec::new();
+            while let Ok((socket, _)) = listener.accept().await {
+                open.push(socket);
+            }
+        });
+        let mut config = test_config(1_000);
+        config
+            .rpc_urls
+            .insert(CHAIN_ID, format!("http://{addr}/path-token"));
+        let service = EvmService::with_timeout(Arc::new(config), Duration::from_millis(200));
+
+        let result = tokio::time::timeout(
+            Duration::from_secs(5),
+            service.get_block_range(CONTRACT, CHAIN_ID),
+        )
+        .await
+        .expect("the RPC request should time out");
+        let display = format!("{:#}", result.unwrap_err());
+        assert!(display.contains("timed out"), "{display}");
+        assert!(!display.contains("path-token"), "{display}");
     }
 
     #[tokio::test]
